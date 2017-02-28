@@ -41,10 +41,6 @@ architecture behavioral of garch is
 
   signal prev_temp3_sum : std_logic_vector(31 downto 0) := "00000000000000000000000000000000";
 
-  signal q : std_logic_vector(31 downto 0) := "00000000000000000000000000000000";
-  signal w : std_logic_vector(31 downto 0) := "00000000000000000000000000000000";
-  signal epsilon : std_logic_vector(31 downto 0) := "00000000000000000000000000000000";
-
   begin
     if (rising_edge(clk)) then
       -- for loop used for pipeline stages
