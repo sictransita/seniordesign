@@ -16,10 +16,10 @@ float s[] = new float[ITERATIONS];
 
 int main()
 {
-  int lambda;
-  int epsilon;
-  int sigma_sq;
-  int prev_sigma_sq;
+  float lambda;
+  float epsilon;
+  float sigma_sq;
+  float prev_sigma_sq;
 
   // set initial sigma in array
   sigma[0] = SIGMA_0;
