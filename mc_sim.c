@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 
 #define ITERATIONS 10000;
 #define ALPHA 2.3;
