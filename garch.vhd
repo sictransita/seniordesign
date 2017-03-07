@@ -1,5 +1,6 @@
 library ieee_proposed;
 use ieee_proposed.fixed_pkg.all;
+use ieee.numeric_std.all;
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
@@ -46,15 +47,32 @@ architecture pipelined of garch is
   signal l4to5 : ufixed (31 downto 0) := "00000000000000000000000000000000";
   signal c4to5 : ufixed (31 downto 0) := "00000000000000000000000000000000";
   signal r4to5 : ufixed (31 downto 0) := "00000000000000000000000000000000";
+  signal root_out : ufixed (31 downto 0) := "00000000000000000000000000000000";
 
   -- constants used in pipeline
   signal gamma : ufixed (31 downto 0) := "00000000000000000000000000000000"; -- dt/2
   signal eta : ufixed (31 downto 0) := "00000000000000000000000000000000"; -- 1 + mu*dt
   signal theta : ufixed (31 downto 0) := "00000000000000000000000000000000"; -- sqrt(dt)
 
+  -- components (square root unit)
+  component square_root
+  generic (WIDTH : positive := 32)
+  port (  clk	: in std_logic;
+          res	: in std_logic;
+          ARG	: in unsigned (WIDTH - 1 downto 0);
+          Z	: out unsigned (WIDTH - 1 downto 0));
+  end component;
+
   -- process for pipeline
   process(clk)
   begin
+    -- map ports
+    root : square_root
+      port map  ( clk => clk,
+                  res => '0',
+                  ARG => 3to4,
+                  z => root_out);
+    -- clock edge
     if (clk'EVENT and clk = '1') then
       -- input flops
       in_lambda <= lambda;
@@ -83,14 +101,14 @@ architecture pipelined of garch is
                     3to4 <= l3 + r3 + in_sigma0;
 
           -- stage 4
-          when 4 => c4to5 <= (sqrt(3to4));
+          when 4 => c4to5 <= root_out;
                     r4to5 <= in_epsilon * theta;
                     l4to5 <= 3to4 * gamma;
+                    out_sigma <= root_out;
 
           -- stage 5
           when 5 => out_weps <= r4to5 * c4to5;
                     out_q <= eta - l4to5;
-                    out_sigma <= (sqrt(3to4));
 
           when others => null;
         end case;
