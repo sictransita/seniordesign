@@ -1,24 +1,23 @@
 library ieee_proposed;
 use ieee_proposed.fixed_pkg.all;
-use ieee.numeric_std.all;
 
 library IEEE;
+use ieee.numeric_std.all;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.STD_LOGIC_UNSIGNED.ALL;
 use IEEE.STD_LOGIC_ARITH.ALL;
 
-entity garch is (
+entity garch is
   port  ( clk : in std_logic;
           lambda : in ufixed (31 downto 0);
           epsilon : in ufixed (31 downto 0);
           alpha : in ufixed (31 downto 0);
           beta : in ufixed (31 downto 0);
-          sigma0 : in ufixed (31 downto 0)
+          sigma0 : in ufixed (31 downto 0);
 
           q : out ufixed (31 downto 0);
-          weps : out ufixed (31 downto 0)
+          weps : out ufixed (31 downto 0);
           sigma : out ufixed (31 downto 0));
-)
 end garch;
 
 architecture pipelined of garch is
@@ -36,14 +35,14 @@ architecture pipelined of garch is
 
   -- wires in garch pipeline (refer to block diagram on google drive)
   --   #to# means pipeline stage # to #
-            --> ex. 1to2 means wire from stage 1 to 2
+            --> ex. w1to2 means wire from stage 1 to 2
   --   letter prefix (r, l, or c) denotes right, left, center respectively
             --> ex r3 means wire on the right in stage 3
-  signal 1to2 : ufixed (31 downto 0) := "00000000000000000000000000000000";
-  signal 2to3 : ufixed (31 downto 0) := "00000000000000000000000000000000";
+  signal w1to2 : ufixed (31 downto 0) := "00000000000000000000000000000000";
+  signal w2to3 : ufixed (31 downto 0) := "00000000000000000000000000000000";
   signal l3 : ufixed (31 downto 0) := "00000000000000000000000000000000";
   signal r3 :ufixed (31 downto 0) := "00000000000000000000000000000000";
-  signal 3to4 : ufixed (31 downto 0) := "00000000000000000000000000000000";
+  signal w3to4 : ufixed (31 downto 0) := "00000000000000000000000000000000";
   signal l4to5 : ufixed (31 downto 0) := "00000000000000000000000000000000";
   signal c4to5 : ufixed (31 downto 0) := "00000000000000000000000000000000";
   signal r4to5 : ufixed (31 downto 0) := "00000000000000000000000000000000";
@@ -56,22 +55,24 @@ architecture pipelined of garch is
 
   -- components (square root unit)
   component square_root
-  generic (WIDTH : positive := 32)
+  generic (WIDTH : positive := 32);
   port (  clk	: in std_logic;
           res	: in std_logic;
           ARG	: in unsigned (WIDTH - 1 downto 0);
           Z	: out unsigned (WIDTH - 1 downto 0));
   end component;
-
+  
+  begin
+  -- map ports
+    root: square_root
+      port map  ( clk => clk,
+                  res => '0',
+                  ARG => w3to4,
+                  z => root_out);
+						
   -- process for pipeline
   process(clk)
   begin
-    -- map ports
-    root : square_root
-      port map  ( clk => clk,
-                  res => '0',
-                  ARG => 3to4,
-                  z => root_out);
     -- clock edge
     if (clk'EVENT and clk = '1') then
       -- input flops
@@ -90,20 +91,20 @@ architecture pipelined of garch is
       for i in 1 to 7 loop
         case i is
           -- stage 1
-          when 1 => 1to2 <= in_lambda * in_lambda;
+          when 1 => w1to2 <= in_lambda * in_lambda;
 
           -- stage 2
-          when 2 => 2to3 <= 1to2 * in_beta;
+          when 2 => w2to3 <= w1to2 * in_beta;
 
           -- stage 3
-          when 3 => l3 <= 3to4 * 2to3;
-                    r3 <= 3to4 * in_alpha;
-                    3to4 <= l3 + r3 + in_sigma0;
+          when 3 => l3 <= w3to4 * w2to3;
+                    r3 <= w3to4 * in_alpha;
+                    w3to4 <= l3 + r3 + in_sigma0;
 
           -- stage 4
           when 4 => c4to5 <= root_out;
                     r4to5 <= in_epsilon * theta;
-                    l4to5 <= 3to4 * gamma;
+                    l4to5 <= w3to4 * gamma;
                     out_sigma <= root_out;
 
           -- stage 5
