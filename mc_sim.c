@@ -56,7 +56,7 @@ int main () {
   double stock = 0.0;
 
   // find the stock price with payoff and sum up
-  for (int i = 0; i < 30; i++) {
+  for (int i = 0; i < 1000; i++) {
     stock = stock_price();
     temp = payoff(stock, 110.0);
     sum_payoff = sum_payoff + temp;
