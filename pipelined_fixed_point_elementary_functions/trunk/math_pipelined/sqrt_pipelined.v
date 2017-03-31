@@ -27,7 +27,7 @@ assign osqrt= cr[`BOUT];
 assign odebug= crr[`BOUT];
 
 always @( posedge clk )
-begin
+begin:name
 	integer ind;
 
 

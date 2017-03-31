@@ -45,7 +45,6 @@ architecture pipelined of garch is
   signal l4to5 : ufixed (0 downto -31) := "00000000000000000000000000000000";
   signal c4to5 : ufixed (0 downto -31) := "00000000000000000000000000000000";
   signal r4to5 : ufixed (0 downto -31) := "00000000000000000000000000000000";
-  signal root_out : unsigned (31 downto 0) := "00000000000000000000000000000000";
 
   -- constants used in pipeline
   signal gamma : ufixed (0 downto -31) := "00000000000000000000000000000000"; -- dt/2
@@ -53,21 +52,21 @@ architecture pipelined of garch is
   signal theta : ufixed (0 downto -31) := "00000000000000000000000000000000"; -- sqrt(dt)
 
   -- components (square root unit)
-  component square_root
-  generic (WIDTH : positive := 32);
-  port (  clk	: in std_logic;
-          res	: in std_logic;
-          ARG	: in unsigned (WIDTH - 1 downto 0);
-          Z	: out unsigned (WIDTH - 1 downto 0));
-  end component;
+  --component square_root
+  --generic (WIDTH : positive := 32);
+  --port (  clk	: in std_logic;
+  --        res	: in std_logic;
+  --        ARG	: in unsigned (WIDTH - 1 downto 0);
+  --        Z	: out unsigned (WIDTH - 1 downto 0));
+  --end component;
   
   begin
   -- map ports
-    root: square_root
-      port map  ( clk => clk,
-                  res => '0',
-                  ARG => to_unsigned(w3to4, 32),
-                  z => root_out);
+  --  root: square_root
+  --    port map  ( clk => clk,
+  --                res => '0',
+  --                ARG => to_unsigned(w3to4, 32),
+  --                z => root_out);
 						
   -- process for pipeline
   process(clk)
@@ -101,10 +100,10 @@ architecture pipelined of garch is
                     w3to4 <= resize(l3 + r3 + in_sigma0, 0, -31);
 
           -- stage 4
-          when 4 => c4to5 <= to_ufixed(root_out, 0 , -31);
+          when 4 => c4to5 <= w3to4;
                     r4to5 <= in_epsilon(0 downto -15) * theta(0 downto -15);
                     l4to5 <= w3to4(0 downto -15) * gamma(0 downto -15);
-                    out_sigma <= to_ufixed(root_out, 0, -31);
+                    out_sigma <= w3to4;
 
           -- stage 5
           when 5 => out_weps <= r4to5(0 downto -15) * c4to5(0 downto -15);

@@ -18,7 +18,7 @@ if { ! [info exists vcdfile] } {
 	set vcdfile "./post_syn/nom.vcd";
 }
 
-puts "Modelsim starting $type simulation"
+puts "Modelsim starting $type simulation";
 
 #functional simulation
 if { ! [ string compare -nocase $type "FUNCTIONAL" ] } {
