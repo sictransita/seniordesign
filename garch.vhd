@@ -40,10 +40,12 @@ architecture pipelined of garch is
   signal in_sqrt : array_root;
   signal root : array_root;
   signal sqrt_rem : array_root;
-  signal out_sqrt : ufixed (0 downto BITS_L) := "0000000000000000";
-  signal out_sqrt_rem : ufixed (0 downto BITS_L) := "0000000000000000";
-  constant MEDI : unsigned (BITS_H downto 0) := "1000000000000000";
-  constant MEDI2 : unsigned (BITS_H downto 0) := "1000000000000000";
+  signal out_sqrt : unsigned (BITS_H downto 0) := "0000000000000000";
+  signal out_sqrt_rem : unsigned (BITS_H downto 0) := "0000000000000000";
+  --signal out_sqrt : ufixed (0 downto BITS_L) := "0000000000000000";
+  --signal out_sqrt_rem : ufixed (0 downto BITS_L) := "0000000000000000";
+  constant MEDI : unsigned (63 downto 0) := x"0000000000000001" sll BITS_H;
+  constant MEDI2 : unsigned (63 downto 0) := x"0000000000000001" sll BITS_H;
 
   -- output signals
   signal out_q : ufixed (0 downto BITS_L) := "0000000000000000";
@@ -77,7 +79,7 @@ architecture pipelined of garch is
   -- declare initial root array values
   root(0) <= "1000000000000000";
   sqrt_rem(0) <= "1000000000000000";
-  
+
   process(clk)
   begin
     -- clock edge
@@ -92,22 +94,25 @@ architecture pipelined of garch is
       weps <= out_weps;
       sigma <= out_sigma;
 
-		-- root i/o conversions
-		in_sqrt <= to_unsigned(w3to4, NUM_BITS);
+    -- declare initial array values
+ in_sqrt(0) <= to_unsigned(w3to4, NUM_BITS);
+ root(0) <= MEDI;
+ sqrt_rem(0) <= MEDI2;
 
-    for ind in 0 to BITS_H loop
-      if (in_sqrt(ind) > sqrt_rem(ind)) then
-        root(ind + 1) <= root(ind) + (MEDI srl (ind + 1));
-        sqrt_rem(ind + 1) <= sqrt_rem(ind) + (MEDI2 srl (2*(ind+1))) + (root(ind) srl ind);
-      else
-        root(ind + 1) <= root(ind) - (MEDI srl (ind + 1));
-        sqrt_rem(ind + 1) <= sqrt_rem(ind) + (MEDI2 srl (2*(ind+1))) - (root(ind) srl ind);
-      end if;
-      in_sqrt(ind + 1) <= in_sqrt(ind);
-    end loop;
+   -- root i/o conversions
+   for ind in 0 to BITS_H - 1 loop
+     if (to_integer(in_sqrt(ind)) > to_integer(sqrt_rem(ind))) then
+       root(ind + 1) <= resize(root(ind) + (MEDI srl (ind + 1)), 16);
+       sqrt_rem(ind + 1) <= resize(sqrt_rem(ind) + (MEDI2 srl (2*(ind+1))) + (root(ind) srl ind), 16);
+     else
+       root(ind + 1) <= resize (root(ind) - (MEDI srl (ind + 1)), 16);
+       sqrt_rem(ind + 1) <= resize (sqrt_rem(ind) + (MEDI2 srl (2*(ind+1))) - (root(ind) srl ind), 16);
+     end if;
+     in_sqrt(ind + 1) <= in_sqrt(ind);
+   end loop;
 
-    out_sqrt <= to_ufixed(root);
-    out_sqrt_rem <= to_ufixed(sqrt_rem);
+   out_sqrt <= root(BITS_H);
+   out_sqrt_rem <= sqrt_rem(BITS_H);
 
       -- pipeline loop
       for i in 1 to 7 loop
@@ -124,10 +129,10 @@ architecture pipelined of garch is
                     w3to4 <= resize(l3 + r3 + in_sigma0, 0, BITS_L);
 
           -- stage 4
-          when 4 => c4to5 <= out_sqrt;
+          when 4 => c4to5 <= to_ufixed(out_sqrt, c4to5);
                     r4to5 <= resize(in_epsilon * theta, 0, BITS_L);
                     l4to5 <= resize(w3to4 * gamma, 0, BITS_L);
-                    out_sigma <= out_sqrt;
+                    out_sigma <= to_ufixed(out_sqrt, out_sigma);
 
           -- stage 5
           when 5 => out_weps <= resize(r4to5 * c4to5, 0, BITS_L);
