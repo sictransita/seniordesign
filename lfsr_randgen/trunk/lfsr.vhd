@@ -51,7 +51,7 @@ library work;
 use work.lfsr_pkg.ALL; 
 
 entity lfsr is
-   generic (width : integer := 4);
+   generic (width : integer := 16);
 port (clk : in std_logic;
 		set_seed : in std_logic; 
       seed : in std_logic_vector(width-1 downto 0);

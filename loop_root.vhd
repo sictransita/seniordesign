@@ -40,9 +40,9 @@ architecture root_cycle of root_loop is
     if (clk'EVENT and clk = '1') then
 	 
 	   -- declare initial array values
-  in_sqrt(0) <= x;
-  root(0) <= MEDI;
-  sqrt_rem(0) <= MEDI2;
+	in_sqrt(0) <= x;
+	root(0) <= MEDI;
+	sqrt_rem(0) <= MEDI2;
 
 		-- root i/o conversions
     for ind in 0 to BITS_H - 1 loop

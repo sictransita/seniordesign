@@ -23,14 +23,6 @@ end garch;
 
 architecture pipelined of garch is
 
-  -- sqrt component
-  component sqrt_pipelined
-  port ( clk : in std_logic;
-			x : in unsigned (BITS_H downto 0);
-			osqrt : out unsigned (BITS_H downto 0);
-			odebug : out unsigned (BITS_H downto 0));
-  end component;
-
   -- iternal signals from flop inputs/ to flop outputs
   signal in_lambda : ufixed (0 downto BITS_L) := "0000000000000000";
   signal in_epsilon : ufixed (0 downto BITS_L) := "0000000000000000";
@@ -76,9 +68,6 @@ architecture pipelined of garch is
 
 
   begin
-  -- declare initial root array values
-  root(0) <= "1000000000000000";
-  sqrt_rem(0) <= "1000000000000000";
 
   process(clk)
   begin
@@ -118,25 +107,25 @@ architecture pipelined of garch is
       for i in 1 to 7 loop
         case i is
           -- stage 1
-          when 1 => w1to2 <= resize(in_lambda * in_lambda, 0, BITS_L);
+          when 1 => w1to2 <= resize(in_lambda * in_lambda, w1to2);
 
           -- stage 2
-          when 2 => w2to3 <= resize(w1to2 * beta, 0, BITS_L);
+          when 2 => w2to3 <= resize(w1to2 * beta, w2to3);
 
           -- stage 3
-          when 3 => l3 <= resize(w3to4 * w2to3, 0 BITS_L);
-                    r3 <= resize(w3to4 * alpha, 0, BITS_L);
-                    w3to4 <= resize(l3 + r3 + in_sigma0, 0, BITS_L);
+          when 3 => l3 <= resize(w3to4 * w2to3, l3);
+                    r3 <= resize(w3to4 * alpha, r3);
+                    w3to4 <= resize(l3 + r3 + in_sigma0, w3to4);
 
           -- stage 4
           when 4 => c4to5 <= to_ufixed(out_sqrt, c4to5);
-                    r4to5 <= resize(in_epsilon * theta, 0, BITS_L);
-                    l4to5 <= resize(w3to4 * gamma, 0, BITS_L);
-                    out_sigma <= to_ufixed(out_sqrt, out_sigma);
+                    r4to5 <= resize(in_epsilon * theta, r4to5);
+                    l4to5 <= resize(w3to4 * gamma, l4to5);
+                    out_sigma <= to_ufixed(out_sqrt, out_sigma); -- if not resized correctly then set to all 1's
 
           -- stage 5
-          when 5 => out_weps <= resize(r4to5 * c4to5, 0, BITS_L);
-                    out_q <= resize(eta - l4to5, 0, BITS_L);
+          when 5 => out_weps <= resize(r4to5 * c4to5, out_weps);
+                    out_q <= resize(eta - l4to5, out_q);
 
           when others => null;
         end case;
