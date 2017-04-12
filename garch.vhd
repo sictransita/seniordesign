@@ -65,17 +65,23 @@ architecture pipelined of garch is
   constant gamma : ufixed (0 downto BITS_L) := "0000000000000000"; -- dt/2
   constant eta : ufixed (0 downto BITS_L) := "0000000000000000"; -- 1 + mu*dt
   constant theta : ufixed (0 downto BITS_L) := "0000000000000000"; -- sqrt(dt)
+  
+  -- days in stock year
+  constant days : integer := 252;
 
   begin
+		 
 
     process(clk)
+		-- loop through 252 days of stock market year
+
+		  variable i_days : integer := 0;
+
     begin
 
-      -- loop through 252 days of stock market year
-      for days in 1 to 252 loop
 
         -- clock edge
-        if (clk'EVENT and clk = '1') then
+        if (clk'EVENT and clk = '1' and i_days < days) then
           -- input flops
           in_lambda <= lambda;
           in_epsilon <= epsilon;
@@ -121,10 +127,10 @@ architecture pipelined of garch is
               w3to4 <= resize(l3 + r3 + in_sigma0, w3to4);
 
               -- stage 4
-              when 4 => c4to5 <= to_ufixed(out_sqrt, c4to5);
+              when 4 => c4to5 <= to_ufixed(out_sqrt, 0, -15);
               r4to5 <= resize(in_epsilon * theta, r4to5);
-              l4to5 <= resize(w3to4 * gamma, l4to5);
-              out_sigma <= to_ufixed(out_sqrt, out_sigma); -- if not resized correctly then set to all 1's
+              l4to5 <= resize(w3to4 * gamma, l4to5); -- does this resizing capture correct bits?
+              out_sigma <= to_ufixed(out_sqrt, 0, -15); -- if not resized correctly then set to all 1's
 
               -- stage 5
               when 5 => out_weps <= resize(r4to5 * c4to5, out_weps);
@@ -133,8 +139,10 @@ architecture pipelined of garch is
               when others => null;
             end case;
           end loop;
+			 
+			 -- increment day count
+			 i_days := i_days + 1;
         end if;
-      end loop;
       end process;
 
     end pipelined;
