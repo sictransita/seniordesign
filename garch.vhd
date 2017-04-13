@@ -12,8 +12,10 @@ entity garch is
   BITS_L : integer := -15);
 
   port  ( clk : in std_logic;
-  lambda : in ufixed (0 downto BITS_L);
-  epsilon : in ufixed (0 downto BITS_L);
+  rst : in std_logic;
+  set_seed : in std_logic;
+  seed_lambda : in unsigned (0 downto BITS_L);
+  seed_eps : in unsigned (0 downto BITS_L);
   sigma0 : in ufixed (0 downto BITS_L); -- taken out
 
   q : out ufixed (0 downto BITS_L);
@@ -21,13 +23,19 @@ entity garch is
   sigma : out ufixed (0 downto BITS_L)); -- necessary?
 end garch;
 
-architecture pipelined of garch is
+architecture mc_sim of garch is
 
   -- iternal signals from flop inputs/ to flop outputs
-  signal in_lambda : ufixed (0 downto BITS_L) := "0000000000000000";
-  signal in_epsilon : ufixed (0 downto BITS_L) := "0000000000000000";
+  signal in_set_seed : std_logic := 0;
+  signal in_seed_lambda : unsigned (BITS_H downto 0) := "0000000000000000";
+  signal in_seed_eps : unsigned (BITS_H downto 0) := "0000000000000000";
   signal in_sigma0 : ufixed (0 downto BITS_L) := "0000000000000000";
 
+  -- RNG lfsr output signals
+  signal lambda : ufixed (0 downto BITS_L) := "0000000000000000";
+  signal epsilon : ufixed (0 downto BITS_L) := "0000000000000000";
+
+  -- root calculation signals
   type array_root is array (0 to BITS_H) of unsigned (BITS_H downto 0);
   signal in_sqrt : array_root;
   signal root : array_root;
@@ -65,84 +73,142 @@ architecture pipelined of garch is
   constant gamma : ufixed (0 downto BITS_L) := "0000000000000000"; -- dt/2
   constant eta : ufixed (0 downto BITS_L) := "0000000000000000"; -- 1 + mu*dt
   constant theta : ufixed (0 downto BITS_L) := "0000000000000000"; -- sqrt(dt)
-  
+
   -- days in stock year
   constant days : integer := 252;
 
   begin
-		 
+    -- BEGIN PROCESSES
+    -- ---------------
+    -- loop through 252 days of stock market year
+    in_out:process(clk)
 
-    process(clk)
-		-- loop through 252 days of stock market year
+    variable i_days : integer := 0;
+    begin
+      -- clock edge and days counter
+      if (rst = '1') then
+        in_set_seed <= 0;
+        in_seed_lambda <= "0000000000000000";
+        in_seed_eps <= "0000000000000000";
+        in_sigma0 <= "0000000000000000";
 
-		  variable i_days : integer := 0;
+        q <= "0000000000000000";
+        weps <= "0000000000000000";
+        sigma <= "0000000000000000";
+
+      elsif (clk'EVENT and clk = '1' and i_days < days) then
+        -- input flops
+        in_set_seed <= set_seed;
+        in_seed_lambda <= seed_lambda;
+        in_seed_eps <= seed_eps;
+        in_sigma0 <= sigma0;
+
+        -- output flops
+        q <= out_q;
+        weps <= out_weps;
+        sigma <= out_sigma;
+
+        -- increment day count
+        i_days := i_days + 1;
+      end if;
+    end process;
+
+    -- lsfr RNG core
+    lsfr:process(clk)
+    -- variables for process
+    variable rand_temp_eps : std_logic_vector (width-1 downto 0):=(0 => '1',others => '0');
+    variable temp_eps : std_logic := '0';
+
+    variable rand_temp_lambda : std_logic_vector (width-1 downto 0):=(0 => '1',others => '0');
+    variable temp_lambda : std_logic := '0';
 
     begin
-
-
-        -- clock edge
-        if (clk'EVENT and clk = '1' and i_days < days) then
-          -- input flops
-          in_lambda <= lambda;
-          in_epsilon <= epsilon;
-          in_sigma0 <= sigma0;
-
-          -- output flops
-          q <= out_q;
-          weps <= out_weps;
-          sigma <= out_sigma;
-
-          -- declare initial array values
-          in_sqrt(0) <= to_unsigned(w3to4, NUM_BITS);
-          root(0) <= MEDI;
-          sqrt_rem(0) <= MEDI2;
-
-          -- root i/o conversions
-          for ind in 0 to BITS_H - 1 loop
-            if (to_integer(in_sqrt(ind)) > to_integer(sqrt_rem(ind))) then
-              root(ind + 1) <= resize(root(ind) + (MEDI srl (ind + 1)), 16);
-              sqrt_rem(ind + 1) <= resize(sqrt_rem(ind) + (MEDI2 srl (2*(ind+1))) + (root(ind) srl ind), 16);
-            else
-              root(ind + 1) <= resize (root(ind) - (MEDI srl (ind + 1)), 16);
-              sqrt_rem(ind + 1) <= resize (sqrt_rem(ind) + (MEDI2 srl (2*(ind+1))) - (root(ind) srl ind), 16);
-            end if;
-            in_sqrt(ind + 1) <= in_sqrt(ind);
-          end loop;
-
-          out_sqrt <= root(BITS_H);
-          out_sqrt_rem <= sqrt_rem(BITS_H);
-
-          -- pipeline loop
-          for i in 1 to 7 loop
-            case i is
-              -- stage 1
-              when 1 => w1to2 <= resize(in_lambda * in_lambda, w1to2);
-
-              -- stage 2
-              when 2 => w2to3 <= resize(w1to2 * beta, w2to3);
-
-              -- stage 3
-              when 3 => l3 <= resize(w3to4 * w2to3, l3);
-              r3 <= resize(w3to4 * alpha, r3);
-              w3to4 <= resize(l3 + r3 + in_sigma0, w3to4);
-
-              -- stage 4
-              when 4 => c4to5 <= to_ufixed(out_sqrt, 0, -15);
-              r4to5 <= resize(in_epsilon * theta, r4to5);
-              l4to5 <= resize(w3to4 * gamma, l4to5); -- does this resizing capture correct bits?
-              out_sigma <= to_ufixed(out_sqrt, 0, -15); -- if not resized correctly then set to all 1's
-
-              -- stage 5
-              when 5 => out_weps <= resize(r4to5 * c4to5, out_weps);
-              out_q <= resize(eta - l4to5, out_q);
-
-              when others => null;
-            end case;
-          end loop;
-			 
-			 -- increment day count
-			 i_days := i_days + 1;
+      -- clock edge
+      if (clk'EVENT and clk = '1') then
+        if (in_set_seed = '1') then
+          rand_temp_lambda := in_seed_lambda;
+          rand_temp_eps := in_seed_eps;
         end if;
-      end process;
 
-    end pipelined;
+        -- lambda assignments
+        temp_lambda := xor_gates(rand_temp_lambda);
+        rand_temp_lambda(width-1 downto 1) := rand_temp_lambda(width-2 downto 0);
+        rand_temp_lambda(0) := temp_lambda;
+
+        -- epsilon assignments
+        temp_eps := xor_gates(rand_temp_eps);
+        rand_temp_eps(width-1 downto 1) := rand_temp_eps(width-2 downto 0);
+        rand_temp_eps(0) := temp_eps;
+      end if;
+
+      lambda <= to_ufixed(rand_temp_lambda, 0 -15);
+      epsilon <= to_ufixed(rand_temp_eps, 0, -15);
+
+    end process;
+
+    -- square root core
+    square_root:process(clk)
+    begin
+      -- clock edge
+      if (clk'EVENT and clk = '1') then
+        -- declare initial array values
+        in_sqrt(0) <= to_unsigned(w3to4, NUM_BITS);
+        root(0) <= MEDI;
+        sqrt_rem(0) <= MEDI2;
+
+        -- root i/o operations
+        for ind in 0 to BITS_H - 1 loop
+          if (to_integer(in_sqrt(ind)) > to_integer(sqrt_rem(ind))) then
+            root(ind + 1) <= resize(root(ind) + (MEDI srl (ind + 1)), 16);
+            sqrt_rem(ind + 1) <= resize(sqrt_rem(ind) + (MEDI2 srl (2*(ind+1))) + (root(ind) srl ind), 16);
+          else
+            root(ind + 1) <= resize (root(ind) - (MEDI srl (ind + 1)), 16);
+            sqrt_rem(ind + 1) <= resize (sqrt_rem(ind) + (MEDI2 srl (2*(ind+1))) - (root(ind) srl ind), 16);
+          end if;
+          in_sqrt(ind + 1) <= in_sqrt(ind);
+        end loop;
+
+        out_sqrt <= root(BITS_H);
+        out_sqrt_rem <= sqrt_rem(BITS_H);
+
+      end if;
+    end process;
+
+    -- pipeline core
+    pipeline:process(clk)
+    begin
+      -- clock edge
+      if (clk'EVENT and clk = '1') then
+        -- pipeline loop
+        for i in 1 to 7 loop
+          case i is
+            -- stage 1
+            when 1 => w1to2 <= resize(in_lambda * in_lambda, w1to2);
+
+            -- stage 2
+            when 2 => w2to3 <= resize(w1to2 * beta, w2to3);
+
+            -- stage 3
+            when 3 => l3 <= resize(w3to4 * w2to3, l3);
+            r3 <= resize(w3to4 * alpha, r3);
+            w3to4 <= resize(l3 + r3 + in_sigma0, w3to4);
+
+            -- stage 4
+            when 4 => c4to5 <= to_ufixed(out_sqrt, 0, -15);
+            r4to5 <= resize(in_epsilon * theta, r4to5);
+            l4to5 <= resize(w3to4 * gamma, l4to5); -- does this resizing capture correct bits?
+            out_sigma <= to_ufixed(out_sqrt, 0, -15); -- if not resized correctly then set to all 1's
+
+            -- stage 5
+            when 5 => out_weps <= resize(r4to5 * c4to5, out_weps);
+            out_q <= resize(eta - l4to5, out_q);
+
+            when others => null;
+          end case;
+        end loop;
+      end if;
+    end process;
+
+    -- -------------
+    -- END PROCESSES
+  end mc_sim;
