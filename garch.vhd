@@ -2,9 +2,13 @@ library IEEE;
 use ieee.numeric_std.all;
 use ieee.std_logic_1164.ALL;
 use ieee.std_logic_unsigned.ALL;
+use ieee.std_logic_arith.ALL;
 
 library ieee_proposed;
 use ieee_proposed.fixed_pkg.all;
+
+library work;
+use work.lfsr_pkg.ALL;
 
 entity garch is
   generic ( NUM_BITS : integer := 16;
@@ -141,8 +145,8 @@ architecture mc_sim of garch is
         rand_temp_eps(0) := temp_eps;
       end if;
 
-      lambda <= to_ufixed(rand_temp_lambda, 0 -15);
-      epsilon <= to_ufixed(rand_temp_eps, 0, -15);
+      lambda <= ufixed(rand_temp_lambda);
+      epsilon <= ufixed(rand_temp_eps);
 
     end process;
 
@@ -152,13 +156,13 @@ architecture mc_sim of garch is
       -- clock edge
       if (clk'EVENT and clk = '1') then
         -- declare initial array values
-        in_sqrt(0) <= to_unsigned(w3to4, NUM_BITS);
+        in_sqrt(0) <= unsigned(w3to4);
         root(0) <= MEDI;
         sqrt_rem(0) <= MEDI2;
 
         -- root i/o operations
         for ind in 0 to BITS_H - 1 loop
-          if (to_integer(in_sqrt(ind)) > to_integer(sqrt_rem(ind))) then
+          if (conv_integer(in_sqrt(ind)) > conv_integer(sqrt_rem(ind))) then
             root(ind + 1) <= resize(root(ind) + (MEDI srl (ind + 1)), 16);
             sqrt_rem(ind + 1) <= resize(sqrt_rem(ind) + (MEDI2 srl (2*(ind+1))) + (root(ind) srl ind), 16);
           else
@@ -194,10 +198,10 @@ architecture mc_sim of garch is
             w3to4 <= resize(l3 + r3 + in_sigma0, w3to4);
 
             -- stage 4
-            when 4 => c4to5 <= to_ufixed(out_sqrt, 0, -15);
+            when 4 => c4to5 <= ufixed(out_sqrt);
             r4to5 <= resize(in_epsilon * theta, r4to5);
             l4to5 <= resize(w3to4 * gamma, l4to5); -- does this resizing capture correct bits?
-            out_sigma <= to_ufixed(out_sqrt, 0, -15); -- if not resized correctly then set to all 1's
+            out_sigma <= ufixed(out_sqrt); -- if not resized correctly then set to all 1's
 
             -- stage 5
             when 5 => out_weps <= resize(r4to5 * c4to5, out_weps);
