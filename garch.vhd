@@ -2,7 +2,6 @@ library IEEE;
 use ieee.numeric_std.all;
 use ieee.std_logic_1164.ALL;
 use ieee.std_logic_unsigned.ALL;
-use ieee.std_logic_arith.ALL;
 
 library ieee_proposed;
 use ieee_proposed.fixed_pkg.all;
@@ -18,8 +17,8 @@ entity garch is
   port  ( clk : in std_logic;
   rst : in std_logic;
   set_seed : in std_logic;
-  seed_lambda : in unsigned (0 downto BITS_L);
-  seed_eps : in unsigned (0 downto BITS_L);
+  seed_lambda : in std_logic_vector (BITS_H downto 0);
+  seed_eps : in std_logic_vector (BITS_H downto 0);
   sigma0 : in ufixed (0 downto BITS_L); -- taken out
 
   q : out ufixed (0 downto BITS_L);
@@ -30,9 +29,9 @@ end garch;
 architecture mc_sim of garch is
 
   -- iternal signals from flop inputs/ to flop outputs
-  signal in_set_seed : std_logic := 0;
-  signal in_seed_lambda : unsigned (BITS_H downto 0) := "0000000000000000";
-  signal in_seed_eps : unsigned (BITS_H downto 0) := "0000000000000000";
+  signal in_set_seed : std_logic := '0';
+  signal in_seed_lambda : std_logic_vector (BITS_H downto 0) := "0000000000000000";
+  signal in_seed_eps : std_logic_vector (BITS_H downto 0) := "0000000000000000";
   signal in_sigma0 : ufixed (0 downto BITS_L) := "0000000000000000";
 
   -- RNG lfsr output signals
@@ -41,9 +40,9 @@ architecture mc_sim of garch is
 
   -- root calculation signals
   type array_root is array (0 to BITS_H) of unsigned (BITS_H downto 0);
-  signal in_sqrt : array_root;
-  signal root : array_root;
-  signal sqrt_rem : array_root;
+  signal in_sqrt : array_root := (others => "0000000000000000");
+  signal root : array_root := (others => "0000000000000000");
+  signal sqrt_rem : array_root := (others => "0000000000000000");
   signal out_sqrt : unsigned (BITS_H downto 0) := "0000000000000000";
   signal out_sqrt_rem : unsigned (BITS_H downto 0) := "0000000000000000";
   --signal out_sqrt : ufixed (0 downto BITS_L) := "0000000000000000";
@@ -85,13 +84,13 @@ architecture mc_sim of garch is
     -- BEGIN PROCESSES
     -- ---------------
     -- loop through 252 days of stock market year
-    in_out:process(clk)
+    in_out:process(clk, rst)
 
     variable i_days : integer := 0;
     begin
       -- clock edge and days counter
       if (rst = '1') then
-        in_set_seed <= 0;
+        in_set_seed <= '0';
         in_seed_lambda <= "0000000000000000";
         in_seed_eps <= "0000000000000000";
         in_sigma0 <= "0000000000000000";
@@ -120,10 +119,10 @@ architecture mc_sim of garch is
     -- lsfr RNG core
     lsfr:process(clk)
     -- variables for process
-    variable rand_temp_eps : std_logic_vector (width-1 downto 0):=(0 => '1',others => '0');
+    variable rand_temp_eps : std_logic_vector (NUM_BITS-1 downto 0):=(0 => '1',others => '0');
     variable temp_eps : std_logic := '0';
 
-    variable rand_temp_lambda : std_logic_vector (width-1 downto 0):=(0 => '1',others => '0');
+    variable rand_temp_lambda : std_logic_vector (NUM_BITS-1 downto 0):=(0 => '1',others => '0');
     variable temp_lambda : std_logic := '0';
 
     begin
@@ -136,12 +135,12 @@ architecture mc_sim of garch is
 
         -- lambda assignments
         temp_lambda := xor_gates(rand_temp_lambda);
-        rand_temp_lambda(width-1 downto 1) := rand_temp_lambda(width-2 downto 0);
+        rand_temp_lambda(NUM_BITS-1 downto 1) := rand_temp_lambda(NUM_BITS-2 downto 0);
         rand_temp_lambda(0) := temp_lambda;
 
         -- epsilon assignments
         temp_eps := xor_gates(rand_temp_eps);
-        rand_temp_eps(width-1 downto 1) := rand_temp_eps(width-2 downto 0);
+        rand_temp_eps(NUM_BITS-1 downto 1) := rand_temp_eps(NUM_BITS-2 downto 0);
         rand_temp_eps(0) := temp_eps;
       end if;
 
@@ -151,7 +150,7 @@ architecture mc_sim of garch is
     end process;
 
     -- square root core
-    square_root:process(clk)
+    square_root:process(clk, in_sqrt, root, sqrt_rem, w3to4)
     begin
       -- clock edge
       if (clk'EVENT and clk = '1') then
@@ -162,7 +161,7 @@ architecture mc_sim of garch is
 
         -- root i/o operations
         for ind in 0 to BITS_H - 1 loop
-          if (conv_integer(in_sqrt(ind)) > conv_integer(sqrt_rem(ind))) then
+          if (to_integer(in_sqrt(ind)) > to_integer(sqrt_rem(ind))) then
             root(ind + 1) <= resize(root(ind) + (MEDI srl (ind + 1)), 16);
             sqrt_rem(ind + 1) <= resize(sqrt_rem(ind) + (MEDI2 srl (2*(ind+1))) + (root(ind) srl ind), 16);
           else
@@ -187,7 +186,7 @@ architecture mc_sim of garch is
         for i in 1 to 7 loop
           case i is
             -- stage 1
-            when 1 => w1to2 <= resize(in_lambda * in_lambda, w1to2);
+            when 1 => w1to2 <= resize(lambda * lambda, w1to2);
 
             -- stage 2
             when 2 => w2to3 <= resize(w1to2 * beta, w2to3);
@@ -199,7 +198,7 @@ architecture mc_sim of garch is
 
             -- stage 4
             when 4 => c4to5 <= ufixed(out_sqrt);
-            r4to5 <= resize(in_epsilon * theta, r4to5);
+            r4to5 <= resize(epsilon * theta, r4to5);
             l4to5 <= resize(w3to4 * gamma, l4to5); -- does this resizing capture correct bits?
             out_sigma <= ufixed(out_sqrt); -- if not resized correctly then set to all 1's
 
