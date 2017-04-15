@@ -12,29 +12,21 @@ use work.lfsr_pkg.ALL;
 entity garch is
   generic ( NUM_BITS : integer := 16;
   BITS_H: integer := 15;
-  BITS_L : integer := -15);
+  BITS_L : integer := -15;
+  PATHS : integer := 64);
 
   port  ( clk : in std_logic;
-  rst : in std_logic;
-  set_seed : in std_logic;
-  seed_lambda : in std_logic_vector (BITS_H downto 0);
-  seed_eps : in std_logic_vector (BITS_H downto 0);
-  sigma0 : in ufixed (0 downto BITS_L); -- taken out
-
-  q : out ufixed (0 downto BITS_L);
-  weps : out ufixed (0 downto BITS_L);
-  sigma : out ufixed (0 downto BITS_L)); -- necessary?
+			rst : in std_logic;
+			avg_prem : out ufixed (7 downto BITS_L + 7));
+			
 end garch;
 
 architecture mc_sim of garch is
 
-  -- iternal signals from flop inputs/ to flop outputs
-  signal in_set_seed : std_logic := '0';
-  signal in_seed_lambda : std_logic_vector (BITS_H downto 0) := "0000000000000000";
-  signal in_seed_eps : std_logic_vector (BITS_H downto 0) := "0000000000000000";
-  signal in_sigma0 : ufixed (0 downto BITS_L) := "0000000000000000";
-
-  -- RNG lfsr output signals
+  -- RNG lfsr signals/constants
+  constant set_seed : std_logic := '0';
+  constant seed_lambda : std_logic_vector (BITS_H downto 0) := "0011101010010011";
+  constant seed_eps : std_logic_vector (BITS_H downto 0) := "0110100110101101";
   signal lambda : ufixed (0 downto BITS_L) := "0000000000000000";
   signal epsilon : ufixed (0 downto BITS_L) := "0000000000000000";
 
@@ -45,74 +37,73 @@ architecture mc_sim of garch is
   signal sqrt_rem : array_root := (others => "0000000000000000");
   signal out_sqrt : unsigned (BITS_H downto 0) := "0000000000000000";
   signal out_sqrt_rem : unsigned (BITS_H downto 0) := "0000000000000000";
-  --signal out_sqrt : ufixed (0 downto BITS_L) := "0000000000000000";
-  --signal out_sqrt_rem : ufixed (0 downto BITS_L) := "0000000000000000";
-  constant MEDI : unsigned (63 downto 0) := x"0000000000000001" sll BITS_H;
-  constant MEDI2 : unsigned (63 downto 0) := x"0000000000000001" sll BITS_H;
+  constant MEDI : unsigned (BITS_H downto 0) := x"0001" sll BITS_H;
+  constant MEDI2 : unsigned (BITS_H downto 0) := x"0001" sll BITS_H;
 
-  -- output signals
-  signal out_q : ufixed (0 downto BITS_L) := "0000000000000000";
-  signal out_weps : ufixed (0 downto BITS_L) := "0000000000000000";
-  signal out_sigma : ufixed (0 downto BITS_L) := "0000000000000000";
-
+  -- garch output signals
+  signal sigma : ufixed (0 downto BITS_L) := "0000000000000000";
+  signal stock : ufixed (12 downto BITs_L) := "0000000000000000000000000000";
 
   -- wires in garch pipeline (refer to block diagram on google drive)
   --   #to# means pipeline stage # to #
   --> ex. w1to2 means wire from stage 1 to 2
   --   letter prefix (r, l, or c) denotes right, left, center respectively
   --> ex r3 means wire on the right in stage 3
-  signal w1to2 : ufixed (0 downto BITS_L) := "0000000000000000";
-  signal w2to3 : ufixed (0 downto BITS_L) := "0000000000000000";
-  signal l3 : ufixed (0 downto BITS_L) := "0000000000000000";
-  signal r3 :ufixed (0 downto BITS_L) := "0000000000000000";
-  signal w3to4 : ufixed (0 downto BITS_L) := "0000000000000000";
-  signal l4to5 : ufixed (0 downto BITS_L) := "0000000000000000";
-  signal c4to5 : ufixed (0 downto BITS_L) := "0000000000000000";
-  signal r4to5 : ufixed (0 downto BITS_L) := "0000000000000000";
+  signal w1to2 : ufixed (1 downto BITS_L + BITS_L) := "00000000000000000000000000000000";
+  signal w2to3 : ufixed (1 downto BITS_L + BITS_L) := "00000000000000000000000000000000";
+  signal l3 : ufixed (1 downto BITS_L + BITS_L) := "00000000000000000000000000000000";
+  signal r3 :ufixed (1 downto BITS_L + BITS_L) := "00000000000000000000000000000000";
+  signal w3to4 : ufixed (2 downto BITS_L) := "000000000000000000";
+  signal l4to5 : ufixed (1 downto BITS_L + BITS_L) := "00000000000000000000000000000000";
+  signal c4to5 : ufixed (0 + NUM_BITS downto BITS_L) := "00000000000000000000000000000000";
+  signal r4to5 : ufixed (1 downto BITS_L + BITS_L) := "00000000000000000000000000000000";
+  signal w5to6 : ufixed (2 downto BITS_L + BITS_L) := "000000000000000000000000000000000";
+  signal stock_pre : ufixed (13 downto BITS_L + BITS_L) := "00000000000000000000000000000000000000000000";
+  signal premium_val : ufixed (13 downto BITS_L) := "00000000000000000000000000000";
+  signal premium : ufixed (7 downto BITS_L + 7) := "0000000000000000";
 
   -- constants used in pipeline
+  constant sigma0 : ufixed (0 downto BITS_L) := "0000010101101100"; -- 4 something percent
+  constant stock0 : ufixed (12 downto BITS_L) := "1001000110001111001100110011"; -- 2328.95
+  constant strike : ufixed (12 downto BITS_L) := "1001001011100000000000000000"; -- 2350.00
+  constant barrier : ufixed (12 downto BITS_L) := "1001010001110000000000000000"; -- 2375.00
   constant alpha : ufixed (0 downto BITS_L) := "0001001111110100"; -- decimal 0.155900
   constant beta : ufixed (0 downto BITS_L) := "0110101110000101"; -- decimal 0.840000
-  constant gamma : ufixed (0 downto BITS_L) := "0000000000000000"; -- dt/2
-  constant eta : ufixed (0 downto BITS_L) := "0000000000000000"; -- 1 + mu*dt
-  constant theta : ufixed (0 downto BITS_L) := "0000000000000000"; -- sqrt(dt)
+  constant gamma : ufixed (0 downto BITS_L) := "0000000001000001"; -- dt/2
+  constant eta : ufixed (0 downto BITS_L) := "1000000000000011"; -- 1 + mu*dt
+  constant theta : ufixed (0 downto BITS_L) := "0000100000010000"; -- sqrt(dt)
+  
+  -- mux premium signals
+  signal premium_sel : std_logic := '0';
+  signal broke : std_logic := '0';
+  
+  -- premium array
+  type prem_array is array (0 to PATHS) of ufixed (7 downto BITS_L + 7);
+  signal path_prems : prem_array := (others => "0000000000000000");
+  signal i_prem : integer := 0;
 
   -- days in stock year
   constant days : integer := 252;
+  signal i_days : integer := 0;
 
   begin
     -- BEGIN PROCESSES
     -- ---------------
     -- loop through 252 days of stock market year
-    in_out:process(clk, rst)
-
-    variable i_days : integer := 0;
+    garch_io:process(clk, rst, i_days)
     begin
       -- clock edge and days counter
       if (rst = '1') then
-        in_set_seed <= '0';
-        in_seed_lambda <= "0000000000000000";
-        in_seed_eps <= "0000000000000000";
-        in_sigma0 <= "0000000000000000";
-
-        q <= "0000000000000000";
-        weps <= "0000000000000000";
-        sigma <= "0000000000000000";
+			broke <= '0';
+			i_days <= 0;
 
       elsif (clk'EVENT and clk = '1' and i_days < days) then
-        -- input flops
-        in_set_seed <= set_seed;
-        in_seed_lambda <= seed_lambda;
-        in_seed_eps <= seed_eps;
-        in_sigma0 <= sigma0;
-
-        -- output flops
-        q <= out_q;
-        weps <= out_weps;
-        sigma <= out_sigma;
-
+		  -- see if broke barrier
+		  if (to_integer(stock) > to_integer(barrier)) then
+				broke <= '1';
+			end if;
         -- increment day count
-        i_days := i_days + 1;
+		  i_days <= i_days + 1;
       end if;
     end process;
 
@@ -128,9 +119,9 @@ architecture mc_sim of garch is
     begin
       -- clock edge
       if (clk'EVENT and clk = '1') then
-        if (in_set_seed = '1') then
-          rand_temp_lambda := in_seed_lambda;
-          rand_temp_eps := in_seed_eps;
+        if (set_seed = '1') then
+          rand_temp_lambda := seed_lambda;
+          rand_temp_eps := seed_eps;
         end if;
 
         -- lambda assignments
@@ -155,7 +146,7 @@ architecture mc_sim of garch is
       -- clock edge
       if (clk'EVENT and clk = '1') then
         -- declare initial array values
-        in_sqrt(0) <= unsigned(w3to4);
+        in_sqrt(0) <= unsigned(w3to4(0 downto BITS_L));
         root(0) <= MEDI;
         sqrt_rem(0) <= MEDI2;
 
@@ -186,31 +177,50 @@ architecture mc_sim of garch is
         for i in 1 to 7 loop
           case i is
             -- stage 1
-            when 1 => w1to2 <= resize(lambda * lambda, w1to2);
+            when 1 => w1to2 <= lambda * lambda;
 
             -- stage 2
-            when 2 => w2to3 <= resize(w1to2 * beta, w2to3);
+            when 2 => w2to3 <= w1to2(0 downto BITS_L) * beta;
 
             -- stage 3
-            when 3 => l3 <= resize(w3to4 * w2to3, l3);
-            r3 <= resize(w3to4 * alpha, r3);
-            w3to4 <= resize(l3 + r3 + in_sigma0, w3to4);
+            when 3 => l3 <= w3to4(0 downto BITS_L) * w2to3(0 downto BITS_L);
+            r3 <= w3to4(0 downto BITS_L) * alpha;
+            w3to4 <= l3(0 downto BITS_L) + r3(0 downto BITS_L) + sigma0;
 
             -- stage 4
             when 4 => c4to5 <= ufixed(out_sqrt);
-            r4to5 <= resize(epsilon * theta, r4to5);
-            l4to5 <= resize(w3to4 * gamma, l4to5); -- does this resizing capture correct bits?
-            out_sigma <= ufixed(out_sqrt); -- if not resized correctly then set to all 1's
+            r4to5 <= epsilon * theta;
+            l4to5 <= w3to4(0 downto BITS_L) * gamma; -- does this resizing capture correct bits?
+            sigma <= ufixed(out_sqrt); -- if not resized correctly then set to all 1's
 
             -- stage 5
-            when 5 => out_weps <= resize(r4to5 * c4to5, out_weps);
-            out_q <= resize(eta - l4to5, out_q);
+            when 5 => w5to6 <= (eta - l4to5(0 downto BITS_L)) + r4to5(0 downto BITS_L) * c4to5(0 downto BITS_L);
+							 
+				when 6 => stock_pre <= stock0 * w5to6(0 downto BITS_L);
+							 stock <= stock_pre(12 downto BITS_L);
 
             when others => null;
           end case;
         end loop;
       end if;
     end process;
+	 
+	 premium_calc:process(clk, i_days, i_prem)
+	 variable premium_diff : integer := 0;
+	 begin
+		-- clock edge
+		if (clk = '1' and i_days < days) then			
+			if ((to_integer(unsigned(stock)) > to_integer(unsigned(strike))) and broke = '1') then
+				premium_val <= stock - strike;
+			else
+				premium_val <= "00000000000000000000000000000";
+			end if;
+			
+			premium <= premium_val(7 downto BITS_L + 7);
+			path_prems(i_prem) <= premium_val(7 downto BITS_L + 7);
+			
+		end if;
+	end process;
 
     -- -------------
     -- END PROCESSES

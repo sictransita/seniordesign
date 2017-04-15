@@ -27,8 +27,8 @@ architecture root_cycle of root_loop is
   signal sqrt_rem : array_root;
   --signal out_sqrt : ufixed (0 downto BITS_L) := "0000000000000000";
   --signal out_sqrt_rem : ufixed (0 downto BITS_L) := "0000000000000000";
-  constant MEDI : unsigned (63 downto 0) := x"0000000000000001" sll BITS_H;
-  constant MEDI2 : unsigned (63 downto 0) := x"0000000000000001" sll BITS_H;
+  constant MEDI : unsigned (15 downto 0) := x"0001" sll BITS_H;
+  constant MEDI2 : unsigned (15 downto 0) := x"0001" sll BITS_H;
 
   begin
 
