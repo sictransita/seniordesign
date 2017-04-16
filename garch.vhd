@@ -74,13 +74,14 @@ architecture mc_sim of garch is
   constant theta : ufixed (0 downto BITS_L) := "0000100000010000"; -- sqrt(dt)
   
   -- mux premium signals
-  signal premium_sel : std_logic := '0';
+  signal prem_sel : std_logic := '0';
   signal broke : std_logic := '0';
   
   -- premium array
   type prem_array is array (0 to PATHS) of ufixed (7 downto BITS_L + 7);
   signal path_prems : prem_array := (others => "0000000000000000");
   signal i_prem : integer := 0;
+
 
   -- days in stock year
   constant days : integer := 252;
@@ -90,7 +91,7 @@ architecture mc_sim of garch is
     -- BEGIN PROCESSES
     -- ---------------
     -- loop through 252 days of stock market year
-    garch_io:process(clk, rst, i_days)
+    garch_io:process(clk, rst)
     begin
       -- clock edge and days counter
       if (rst = '1') then
@@ -104,11 +105,16 @@ architecture mc_sim of garch is
 			end if;
         -- increment day count
 		  i_days <= i_days + 1;
-      end if;
+		  
+		elsif (clk'EVENT and clk = '1' and i_days = days) then
+			path_prems(i_prem) <= premium;
+			i_prem <= i_prem + 1;
+			i_days <= 0;
+		end if;
     end process;
 
     -- lsfr RNG core
-    lsfr:process(clk)
+    lsfr:process(clk, i_days)
     -- variables for process
     variable rand_temp_eps : std_logic_vector (NUM_BITS-1 downto 0):=(0 => '1',others => '0');
     variable temp_eps : std_logic := '0';
@@ -118,7 +124,7 @@ architecture mc_sim of garch is
 
     begin
       -- clock edge
-      if (clk'EVENT and clk = '1') then
+      if (rising_edge(clk) and i_days < days) then
         if (set_seed = '1') then
           rand_temp_lambda := seed_lambda;
           rand_temp_eps := seed_eps;
@@ -141,10 +147,9 @@ architecture mc_sim of garch is
     end process;
 
     -- square root core
-    square_root:process(clk, in_sqrt, root, sqrt_rem, w3to4)
+    square_root:process(in_sqrt, root, sqrt_rem, w3to4, i_days)
     begin
-      -- clock edge
-      if (clk'EVENT and clk = '1') then
+		if (i_days < days) then
         -- declare initial array values
         in_sqrt(0) <= unsigned(w3to4(0 downto BITS_L));
         root(0) <= MEDI;
@@ -164,15 +169,14 @@ architecture mc_sim of garch is
 
         out_sqrt <= root(BITS_H);
         out_sqrt_rem <= sqrt_rem(BITS_H);
-
-      end if;
+		end if;
     end process;
 
     -- pipeline core
     pipeline:process(clk)
     begin
       -- clock edge
-      if (clk'EVENT and clk = '1') then
+      if (rising_edge(clk) and i_days < days) then
         -- pipeline loop
         for i in 1 to 7 loop
           case i is
@@ -205,20 +209,16 @@ architecture mc_sim of garch is
       end if;
     end process;
 	 
-	 premium_calc:process(clk, i_days, i_prem)
+	 premium_calc:process(i_days, stock, premium_val, broke)
 	 variable premium_diff : integer := 0;
 	 begin
-		-- clock edge
-		if (clk = '1' and i_days < days) then			
+		premium_val <= stock - strike;
+		if (i_days < days + 1) then			
 			if ((to_integer(unsigned(stock)) > to_integer(unsigned(strike))) and broke = '1') then
-				premium_val <= stock - strike;
+				premium <= premium_val(7 downto BITS_L + 7);
 			else
-				premium_val <= "00000000000000000000000000000";
-			end if;
-			
-			premium <= premium_val(7 downto BITS_L + 7);
-			path_prems(i_prem) <= premium_val(7 downto BITS_L + 7);
-			
+				premium <= "0000000000000000";
+			end if;	
 		end if;
 	end process;
 
