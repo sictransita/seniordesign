@@ -102,12 +102,13 @@ architecture mc_sim of garch is
 	 
     garch_io:process(clk, rst)
     begin
+	 if (clk'EVENT and clk = '1') then
       -- clock edge and days counter
       if (rst = '1') then
 			broke <= '0';
 			i_days <= 0;
 
-      elsif (clk'EVENT and clk = '1' and i_days < days) then
+      elsif (i_days < days) then
 		  -- see if broke barrier
 		  if (to_integer(stock) > to_integer(barrier)) then
 				broke <= '1';
@@ -115,11 +116,12 @@ architecture mc_sim of garch is
         -- increment day count
 		  i_days <= i_days + 1;
 		  
-		elsif (clk'EVENT and clk = '1' and i_days = days) then
+		elsif (i_days = days) then
 			path_prems(i_prem) <= premium;
 			i_prem <= i_prem + 1;
 			i_days <= 0;
 		end if;
+	 end if;
     end process;
 
     -- lsfr RNG core
