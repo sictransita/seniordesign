@@ -81,7 +81,7 @@ architecture mc_sim of garch is
   type prem_array is array (0 to PATHS) of ufixed (7 downto BITS_L + 7);
   signal path_prems : prem_array := (others => "0000000000000000");
   signal i_prem : integer := 0;
-
+  signal avg : ufixed (7 downto BITS_L + 7) := "0000000000000000";
 
   -- days in stock year
   constant days : integer := 252;
@@ -91,6 +91,15 @@ architecture mc_sim of garch is
     -- BEGIN PROCESSES
     -- ---------------
     -- loop through 252 days of stock market year
+	 in_out:process(clk, rst)
+	 begin
+		if (rst = '1') then
+			avg_prem <= "0000000000000000";
+		elsif (clk'EVENT and clk = '1') then
+			avg_prem <= avg;
+		end if;
+	 end process;
+	 
     garch_io:process(clk, rst)
     begin
       -- clock edge and days counter
